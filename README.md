@@ -3,6 +3,11 @@
 ## Overview
 The Langraph Multi-Agent System is a Flask-based application that leverages the LangChain framework and Azure OpenAI services to create a multi-agent system capable of handling various user queries. The system is designed to facilitate interactions with different agents, each specialized in a specific domain, such as SQL queries, policy information, internet searches, and travel assistance.
 
+## Demo
+Below is a screenshot of the chat interface in action:
+
+![UI Demo](demo/images/Ui.jpeg)
+
 ## Features
 - **Multi-Agent Architecture**: The system utilizes multiple agents, each designed to handle specific types of queries.
 - **Azure OpenAI Integration**: The application integrates with Azure OpenAI to leverage advanced language models for generating responses.
