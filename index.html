@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ask AI Chatbot</title>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #343541;
+  color: #fff;
+  display: flex;
+  height: 100vh;
+}
+.sidebar { width: 260px; background-color: #202123; padding: 16px; overflow-y: auto; }
+.sidebar h1 { font-size: 25px; }
+.sidebar p { font-size: 13px; color: #9ca3af; }
+.new-chat-btn { width: 100%; padding: 10px; border-radius: 8px; border: none; background-color: #19c37d; cursor: pointer; margin-bottom: 20px; }
+.chat-item { padding: 8px; border-radius: 6px; cursor: pointer; color: #d1d5db; margin-bottom: 6px; font-size: 13px; }
+.chat-item:hover { background-color: #343541; }
+
+.chat-container { flex: 1; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; padding: 24px; overflow-y: auto; }
+
+.message-row { display: flex; gap: 10px; margin-bottom: 15px; }
+.message-row.user { justify-content: flex-end; }
+.message-row.assistant { justify-content: flex-start; }
+
+.bubble {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.bubble.user {
+  background-color: #19c37d;
+  color: #000;
+  border-bottom-right-radius: 4px;
+  margin-right: 20px;
+}
+
+.bubble.assistant {
+  background-color: #444654;
+  color: #d1d5db;
+  border-bottom-left-radius: 4px;
+  margin-left: 20px;
+  image-rendering: auto;
+}
+
+.thinking { font-style: italic; color: #9ca3af; }
+
+.input-area {
+  border-top: 1px solid #4b5563;
+  padding: 16px;
+  background-color: #40414f;
+}
+
+.input-box {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+}
+
+textarea {
+  flex: 1;
+  resize: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 15px;
+  border: none;
+  outline: none;
+}
+
+button.send {
+  background-color: #19c37d;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* TABLE */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { border: 1px solid #555; padding: 6px; }
+th { background-color: #202123; }
+
+/* CITATIONS */
+.citations-section {
+  margin-top: 16px;
+  padding: 12px;
+  border-top: 2px solid #19c37d;
+  border-radius: 6px;
+  background-color: rgba(25, 195, 125, 0.1);
+  font-size: 12px;
+}
+
+.citations-section .title {
+  font-weight: bold;
+  color: #19c37d;
+  margin-bottom: 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.citation-item {
+  margin-bottom: 8px;
+  padding: 6px 0;
+  line-height: 1.4;
+}
+
+.citation-item a {
+  color: #19c37d;
+  text-decoration: none;
+  word-break: break-word;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.citation-item a:hover {
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+.citation-item a::before {
+  content: "🔗";
+  font-size: 12px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+  <h1>Ask AI</h1>
+  <p>Connected to my Intelligence</p>
+  <button class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+  <h2>Your Chats</h2>
+  <div id="chatList"></div>
+</div>
+
+<div class="chat-container">
+  <div id="messages" class="chat-messages"></div>
+
+  <div class="input-area">
+    <div class="input-box">
+      <textarea id="question" rows="1" placeholder="Ask something..."></textarea>
+      <button class="send" id="sendBtn">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const questionEl = document.getElementById('question');
+const chatListEl = document.getElementById('chatList');
+
+let chats = {};
+let currentConversationId = null;
+
+function createConversationId() {
+  return 'chat-' + Date.now();
+}
+
+function cleanText(text) {
+  return text
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function renderChatList() {
+  chatListEl.innerHTML = '';
+  Object.entries(chats).forEach(([id, chat]) => {
+    const item = document.createElement('div');
+    item.className = 'chat-item';
+    item.textContent = chat.title || 'New Chat';
+    item.onclick = () => loadChat(id);
+    chatListEl.appendChild(item);
+  });
+}
+
+
+function loadChat(id) {
+  currentConversationId = id;
+  messagesEl.innerHTML = '';
+  chats[id].messages.forEach(m => renderBubble(m.role, m.content));
+}
+
+function renderBubble(role, content, thinking = false) {
+  const row = document.createElement('div');
+  row.className = `message-row ${role}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = `bubble ${role}` + (thinking ? ' thinking' : '');
+
+  if (typeof content === 'string') {
+    const text = cleanText(content);
+    // linkify URLs to clickable anchors
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function linkify(text) {
+      // include semicolon and parentheses to fully capture SharePoint query strings
+      const urlPattern = /\b(https?:\/\/|www\.)[\w\-?=%.:/&+#;()]+/gi;
+      return escapeHtml(text).replace(urlPattern, function(url) {
+        let href = url;
+        if (!href.match(/^https?:\/\//i)) {
+          href = 'http://' + href;
+        }
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: #0000FF;">${url}</a>`;
+      });
+    }
+
+    // If text contains a URL, render as HTML with links; otherwise use textContent
+    if (text.match(/https?:\/\//) || text.match(/www\./)) {
+      bubble.innerHTML = linkify(text);
+    } else {
+      bubble.textContent = text;
+    }
+  }
+
+  row.append(bubble);
+  messagesEl.appendChild(row);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  return bubble;
+}
+function renderChart(rows, bubble) {
+  let xKey = 'RechargeDate';
+  let yKey = 'TotalSales';
+
+  if (!rows[0][xKey] || !rows[0][yKey]) {
+    const cols = Object.keys(rows[0]);
+    xKey = cols[0];
+    yKey = cols[1];
+  }
+
+  const div = document.createElement('div');
+  div.style.width = '100%';
+  div.style.height = '400px';
+  div.style.maxWidth = '700px';
+  bubble.appendChild(div);
+
+  Plotly.newPlot(div, [{
+    type: 'scatter',
+    mode: 'lines+markers',
+    x: rows.map(r => r[xKey]),
+    y: rows.map(r => Number(r[yKey]) || 0),
+  }], {
+    title: 'Recharge Sales Over Time',
+    xaxis: { title: xKey },
+    yaxis: { title: yKey }
+  });
+}
+
+function renderCitations(citations, bubble) {
+  const citationsDiv = document.createElement('div');
+  citationsDiv.className = 'citations-section';
+  
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = 'Sources';
+  citationsDiv.appendChild(title);
+  
+  citations.forEach(citation => {
+    const item = document.createElement('div');
+    item.className = 'citation-item';
+    
+    const link = document.createElement('a');
+    link.href = citation.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    // show the URL as the clickable text for full-click area; also include readable title above
+    const titleDiv = document.createElement('div');
+    titleDiv.style.fontWeight = '600';
+    titleDiv.style.marginBottom = '4px';
+    titleDiv.textContent = citation.title || 'Source Document';
+    item.appendChild(titleDiv);
+
+    link.textContent = citation.url || citation.title || 'Open source';
+    
+    item.appendChild(link);
+    citationsDiv.appendChild(item);
+  });
+  
+  bubble.appendChild(citationsDiv);
+}
+
+async function sendMessage() {
+  const q = questionEl.value.trim();
+  if (!q) return;
+
+  chats[currentConversationId].messages.push({ role:'user', content:q });
+
+  if (!chats[currentConversationId].title) {
+    chats[currentConversationId].title = q.slice(0,30) + '...';
+    renderChatList();
+  }
+
+  renderBubble('user', q);
+  questionEl.value = '';
+
+  const thinking = renderBubble('assistant', 'Thinking...', true);
+
+  const res = await fetch('/ask', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ query:q, conversation_id: currentConversationId })
+  });
+
+  const data = await res.json();
+  thinking.remove();
+
+  const answerObj = data.answer;
+
+  // IMAGE GRAPH CASE (backend generated image)
+  if (data.image) {
+    const bubble = renderBubble('assistant', answerObj);
+    const img = document.createElement('img');
+    img.src = `data:image/png;base64,${data.image}`;
+    img.style.maxWidth = '100%';
+    img.style.height = 'autox';
+    bubble.appendChild(img);
+    chats[currentConversationId].messages.push({
+      role: 'assistant',
+      content: answerObj + ' [IMAGE GRAPH]'
+    });
+    return;
+  }
+
+  // GRAPH CASE (SQL tool result for non-graph queries)
+  if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+    const bubble = renderBubble('assistant', answerObj);
+    renderChart(data.data, bubble);
+    chats[currentConversationId].messages.push({
+      role: 'assistant',
+      content: answerObj + ' [GRAPH]'
+    });
+    return;
+  }
+
+  // CITATIONS CASE (Policy or Internet Agent responses)
+  if (data.citations && Array.isArray(data.citations) && data.citations.length > 0) {
+    const bubble = renderBubble('assistant', answerObj);
+    renderCitations(data.citations, bubble);
+    chats[currentConversationId].messages.push({
+      role: 'assistant',
+      content: answerObj + ' [WITH CITATIONS]'
+    });
+    return;
+  }
+
+  // TABLE CASE
+  if (typeof answerObj === 'string' && answerObj.includes('<table')) {
+    const bubble = renderBubble('assistant', '');
+    bubble.innerHTML = answerObj;
+    chats[currentConversationId].messages.push({
+      role: 'assistant',
+      content: answerObj
+    });
+    return;
+  }
+
+  // TEXT CASE
+  const textAnswer =
+    typeof answerObj === 'string'
+      ? cleanText(answerObj)
+      : cleanText(JSON.stringify(answerObj, null, 2));
+
+  const bubble = renderBubble('assistant', textAnswer);
+  chats[currentConversationId].messages.push({
+    role: 'assistant',
+    content: textAnswer
+  });
+}
+
+document.getElementById('sendBtn').onclick = sendMessage;
+document.getElementById('newChatBtn').onclick = () => {
+  currentConversationId = createConversationId();
+  chats[currentConversationId] = { title:'', messages:[] };
+  messagesEl.innerHTML = '';
+};
+
+questionEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+currentConversationId = createConversationId();
+chats[currentConversationId] = { title:'', messages:[] };
+</script>
+
+</body>
+</html>
